@@ -1,11 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCode, updateCode } from "@/app/actions";
-import type { ActionState, CodeNote } from "@/lib/types";
+import type { CodeNote } from "@/lib/types";
 
-const initialState: ActionState = {};
 const emptySubscribe = () => () => {};
 
 function FormattedDate({ dateString }: { dateString: string }) {
@@ -102,22 +101,43 @@ function CopyButton({ code }: { code: string }) {
 function EditForm({
   note,
   onCancel,
+  onSaveSuccess,
 }: {
   note: CodeNote;
   onCancel: () => void;
+  onSaveSuccess: (updated: { title: string; code: string }) => void;
 }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState(updateCode, initialState);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (state.success) {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setPending(true);
+    setError(null);
+
+    const formData = new FormData(e.currentTarget);
+    try {
+      const res = await updateCode({}, formData);
+      if (res?.error) {
+        setError(res.error);
+        setPending(false);
+        return;
+      }
+
+      onSaveSuccess({
+        title: String(formData.get("title") ?? "").trim(),
+        code: String(formData.get("code") ?? "").trim(),
+      });
       router.refresh();
-      onCancel();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update note");
+      setPending(false);
     }
-  }, [state.success, onCancel, router]);
+  };
 
   return (
-    <form action={formAction} className="space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-3">
       <input type="hidden" name="id" value={note.id} />
       <input
         name="title"
@@ -132,7 +152,7 @@ function EditForm({
         className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100 placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
         required
       />
-      {state.error ? <p className="text-sm text-rose-400">{state.error}</p> : null}
+      {error ? <p className="text-sm text-rose-400">{error}</p> : null}
       <div className="flex gap-2">
         <button
           type="submit"
@@ -155,16 +175,35 @@ function EditForm({
 
 function NoteCard({ note, canEdit }: { note: CodeNote; canEdit: boolean }) {
   const [editing, setEditing] = useState(false);
+  const [updatedData, setUpdatedData] = useState<{ title: string; code: string } | null>(null);
+  const [prevNote, setPrevNote] = useState(note);
+
+  if (note !== prevNote) {
+    setPrevNote(note);
+    setUpdatedData(null);
+  }
+
+  const title = updatedData?.title ?? note.title;
+  const code = updatedData?.code ?? note.code;
+
+  const handleSaveSuccess = (updated: { title: string; code: string }) => {
+    setUpdatedData(updated);
+    setEditing(false);
+  };
 
   return (
     <article className="rounded-xl border border-slate-800 bg-slate-900 p-5">
       {editing ? (
-        <EditForm note={note} onCancel={() => setEditing(false)} />
+        <EditForm
+          note={{ ...note, title, code }}
+          onCancel={() => setEditing(false)}
+          onSaveSuccess={handleSaveSuccess}
+        />
       ) : (
         <>
           <div className="mb-3 flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-lg font-semibold">{note.title}</h3>
+              <h3 className="text-lg font-semibold">{title}</h3>
               <p className="text-xs text-slate-400">
                 by {note.author} · <FormattedDate dateString={note.createdAt} />
               </p>
@@ -192,10 +231,10 @@ function NoteCard({ note, canEdit }: { note: CodeNote; canEdit: boolean }) {
           </div>
           <div className="relative">
             <div className="absolute right-3 top-3 z-10">
-              <CopyButton code={note.code} />
+              <CopyButton code={code} />
             </div>
             <pre className="overflow-x-auto rounded-md bg-slate-950 p-4 pr-24 font-mono text-sm text-slate-200">
-              <code>{note.code}</code>
+              <code>{code}</code>
             </pre>
           </div>
         </>
