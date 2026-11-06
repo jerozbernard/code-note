@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb";
 import { Header } from "@/components/Header";
 import { UploadForm } from "@/components/UploadForm";
 import { CodeList } from "@/components/CodeList";
@@ -15,14 +16,23 @@ export default async function Home() {
   try {
     const codes = await getCodesCollection();
     const docs = await codes.find().sort({ createdAt: -1 }).toArray();
-    notes = docs.map((doc) => ({
-      id: String(doc._id),
-      title: String(doc.title ?? ""),
-      code: String(doc.code ?? ""),
-      author: String(doc.author ?? "unknown"),
-      createdAt: new Date(doc.createdAt ?? Date.now()).toISOString(),
-      updatedAt: new Date(doc.updatedAt ?? Date.now()).toISOString(),
-    }));
+    notes = docs.map((doc) => {
+      const idStr = String(doc._id);
+      const fallbackDate = ObjectId.isValid(idStr)
+        ? new ObjectId(idStr).getTimestamp()
+        : new Date(0);
+      const createdAt = doc.createdAt ? new Date(doc.createdAt) : fallbackDate;
+      const updatedAt = doc.updatedAt ? new Date(doc.updatedAt) : createdAt;
+
+      return {
+        id: idStr,
+        title: String(doc.title ?? ""),
+        code: String(doc.code ?? ""),
+        author: String(doc.author ?? "unknown"),
+        createdAt: createdAt.toISOString(),
+        updatedAt: updatedAt.toISOString(),
+      };
+    });
   } catch (error) {
     dbError = mongoErrorMessage(error);
   }

@@ -1,24 +1,46 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCode, updateCode } from "@/app/actions";
 import type { CodeNote } from "@/lib/types";
 
-const emptySubscribe = () => () => {};
+function formatDate(dateString: string): string {
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return dateString;
+    return (
+      new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "UTC",
+      }).format(d) + " UTC"
+    );
+  } catch {
+    return dateString;
+  }
+}
 
 function FormattedDate({ dateString }: { dateString: string }) {
-  const isClient = useSyncExternalStore(
-    emptySubscribe,
-    () => true,
-    () => false,
-  );
+  const [localDate, setLocalDate] = useState<string>("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        setLocalDate(new Date(dateString).toLocaleString());
+      } catch {
+        setLocalDate(dateString);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [dateString]);
 
   return (
-    <time dateTime={dateString} suppressHydrationWarning>
-      {isClient
-        ? new Date(dateString).toLocaleString()
-        : dateString.replace("T", " ").slice(0, 16)}
+    <time dateTime={dateString} title={dateString} suppressHydrationWarning>
+      {localDate || formatDate(dateString)}
     </time>
   );
 }
@@ -250,6 +272,8 @@ export function CodeList({
   notes: CodeNote[];
   canEdit: boolean;
 }) {
+  const [searchQuery, setSearchQuery] = useState("");
+
   if (notes.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-slate-800 p-8 text-center text-slate-400">
@@ -258,11 +282,94 @@ export function CodeList({
     );
   }
 
+  const query = searchQuery.trim().toLowerCase();
+  const filteredNotes = query
+    ? notes.filter((note) => note.title.toLowerCase().includes(query))
+    : notes;
+
   return (
     <div className="space-y-4">
-      {notes.map((note) => (
-        <NoteCard key={note.id} note={note} canEdit={canEdit} />
-      ))}
+      <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <label htmlFor="search-title" className="block text-sm font-medium text-slate-300">
+          Search programs by title
+        </label>
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+          </div>
+          <input
+            id="search-title"
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search programs by title..."
+            className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-10 text-sm text-slate-100 placeholder-slate-500 shadow-sm transition focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-200"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
+
+        {query ? (
+          <p className="pt-1 text-xs text-slate-400">
+            Found {filteredNotes.length} {filteredNotes.length === 1 ? "program" : "programs"} matching &quot;{searchQuery}&quot;
+          </p>
+        ) : null}
+      </div>
+
+      {filteredNotes.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-800 p-8 text-center">
+          <p className="text-slate-400">
+            No programs found matching <span className="font-medium text-slate-200">&quot;{searchQuery}&quot;</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="mt-3 text-sm text-sky-400 underline underline-offset-4 hover:text-sky-300"
+          >
+            Clear search
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filteredNotes.map((note) => (
+            <NoteCard key={note.id} note={note} canEdit={canEdit} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
